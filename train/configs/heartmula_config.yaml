@@ -1,0 +1,143 @@
+# HeartMuLa Training Configuration
+# Based on the HeartMuLa paper (arxiv:2601.10547)
+
+# Model Architecture
+model:
+  # Backbone (Main LLM)
+  backbone_flavor: "llama-3B"  # Options: llama-3B, llama-7B
+
+  # Decoder (Audio Codebook Decoder)
+  decoder_flavor: "llama-300M"  # Options: llama-300M, llama-400M
+
+  # Vocabulary
+  text_vocab_size: 128256  # LLaMA-3.2 vocabulary
+  audio_vocab_size: 8197   # 8192 codebook + special tokens
+  audio_num_codebooks: 8
+
+  # MUQ features dimension
+  muq_dim: 512
+
+  # Pre-trained codec path (required)
+  heartcodec_path: "./checkpoints/heartcodec"
+
+# Training Hyperparameters
+training:
+  # General
+  seed: 42
+  output_dir: "./outputs/heartmula"
+
+  # Batch size
+  batch_size: 4
+  gradient_accumulation_steps: 8
+  effective_batch_size: 64  # batch_size * gradient_accumulation_steps * num_gpus
+
+  # Duration
+  num_epochs: 50
+  max_steps: 200000
+
+  # Sequence lengths
+  max_text_length: 1024     # Maximum text tokens
+  max_audio_frames: 4000    # Maximum audio frames (~5 minutes at 12.5 Hz)
+
+  # Optimizer
+  optimizer:
+    name: "adamw"
+    lr: 5.0e-5
+    weight_decay: 0.1
+    betas: [0.9, 0.95]
+    eps: 1.0e-8
+
+  # Learning rate scheduler
+  scheduler:
+    name: "cosine_with_restarts"
+    warmup_steps: 2000
+    num_cycles: 1
+    min_lr: 1.0e-6
+
+  # Mixed precision
+  mixed_precision: "bf16"
+
+  # Gradient clipping
+  max_grad_norm: 1.0
+
+  # Gradient checkpointing (for memory efficiency)
+  gradient_checkpointing: true
+
+  # Checkpointing
+  save_steps: 2000
+  save_total_limit: 5
+  resume_from_checkpoint: null
+
+  # Logging
+  logging_steps: 50
+  wandb:
+    enabled: true
+    project: "heartmula"
+    run_name: null
+
+  # Evaluation
+  eval_steps: 1000
+  eval_samples: 100
+
+# Loss configuration
+loss:
+  # Next-token prediction loss (cross-entropy)
+  # First codebook (codebook0) - predicted by backbone
+  codebook0_weight: 1.0
+
+  # Remaining codebooks (1-7) - predicted by decoder
+  codebook_weights: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+  # Label smoothing
+  label_smoothing: 0.0
+
+  # Ignore index for padding
+  ignore_index: -100
+
+# Classifier-Free Guidance Training
+cfg:
+  enabled: true
+  unconditional_prob: 0.1  # Probability of dropping text condition
+
+# Data
+data:
+  train_data_dir: "./data/train"
+  val_data_dir: "./data/val"
+  num_workers: 8
+  prefetch_factor: 2
+
+  # Tokenizer
+  tokenizer_path: "./checkpoints/tokenizer"
+
+  # Special tokens
+  text_bos_id: 128000
+  text_eos_id: 128001
+  audio_eos_id: 8193
+  empty_id: 0
+
+  # Tag tokens
+  tag_start: "<tag>"
+  tag_end: "</tag>"
+
+  # Audio processing
+  sample_rate: 48000
+
+  # Data format
+  # Expected: {"audio_path": str, "tags": str, "lyrics": str}
+
+# Distributed training
+distributed:
+  enabled: true
+  backend: "nccl"
+  find_unused_parameters: false
+
+  # DeepSpeed (optional)
+  deepspeed:
+    enabled: false
+    config_path: "./configs/deepspeed_config.json"
+
+  # FSDP (optional)
+  fsdp:
+    enabled: false
+    sharding_strategy: "FULL_SHARD"
+    cpu_offload: false

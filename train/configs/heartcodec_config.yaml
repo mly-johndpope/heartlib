@@ -1,0 +1,148 @@
+# HeartCodec Training Configuration
+# Based on the HeartMuLa paper (arxiv:2601.10547)
+
+# Model Architecture
+model:
+  # Flow Matching / ResidualVQ
+  dim: 512
+  codebook_size: 8192
+  codebook_dim: 32
+  num_quantizers: 8
+  decay: 0.9
+  commitment_weight: 1.0
+  threshold_ema_dead_code: 2
+  use_cosine_sim: false
+
+  # Transformer Estimator
+  attention_head_dim: 64
+  in_channels: 1024
+  norm_type: "ada_norm_single"
+  num_attention_heads: 24
+  num_layers: 24
+  num_layers_2: 6
+  out_channels: 256
+
+  # Scalar Codec (SQ)
+  num_bands: 1
+  sample_rate: 48000
+  causal: true
+  num_samples: 2
+  downsample_factors: [3, 4, 4, 4, 5]
+  downsample_kernel_sizes: [6, 8, 8, 8, 10]
+  upsample_factors: [5, 4, 4, 4, 3]
+  upsample_kernel_sizes: [10, 8, 8, 8, 6]
+  latent_hidden_dim: 128
+  default_kernel_size: 7
+  delay_kernel_size: 5
+  init_channel: 64
+  res_kernel_size: 7
+
+# Training Hyperparameters
+training:
+  # General
+  seed: 42
+  output_dir: "./outputs/heartcodec"
+
+  # Batch size
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  effective_batch_size: 32  # batch_size * gradient_accumulation_steps * num_gpus
+
+  # Duration
+  num_epochs: 100
+  max_steps: 500000
+
+  # Audio processing
+  audio_duration_sec: 30.0  # 30 seconds per sample
+  hop_length: 3840  # 48000 / 12.5 = 3840 samples per frame
+
+  # Optimizer
+  optimizer:
+    name: "adamw"
+    lr: 1.0e-4
+    weight_decay: 0.01
+    betas: [0.9, 0.95]
+    eps: 1.0e-8
+
+  # Learning rate scheduler
+  scheduler:
+    name: "cosine"
+    warmup_steps: 2000
+    min_lr: 1.0e-6
+
+  # Mixed precision
+  mixed_precision: "bf16"  # or "fp16" or "fp32"
+
+  # Gradient clipping
+  max_grad_norm: 1.0
+
+  # Checkpointing
+  save_steps: 5000
+  save_total_limit: 5
+  resume_from_checkpoint: null
+
+  # Logging
+  logging_steps: 100
+  wandb:
+    enabled: true
+    project: "heartcodec"
+    run_name: null
+
+# Loss weights
+loss:
+  # ScalarCodec reconstruction loss
+  reconstruction_weight: 1.0
+  reconstruction_type: "l1"  # or "mse"
+
+  # Multi-resolution STFT loss
+  stft_weight: 1.0
+  stft_fft_sizes: [512, 1024, 2048]
+  stft_hop_sizes: [50, 120, 240]
+  stft_win_lengths: [240, 600, 1200]
+
+  # Perceptual loss (mel-spectrogram)
+  mel_weight: 45.0
+  mel_n_mels: 80
+
+  # VQ commitment loss (handled by ResidualVQ)
+  commitment_weight: 1.0
+
+  # Flow matching loss
+  flow_matching_weight: 1.0
+  flow_matching_sigma_min: 1.0e-4
+
+  # Adversarial loss (optional GAN training)
+  adversarial_weight: 0.0  # Set > 0 to enable discriminator
+  feature_matching_weight: 0.0
+
+# Discriminator (for GAN training)
+discriminator:
+  enabled: false
+  type: "multi_scale"
+  num_scales: 3
+  lr: 2.0e-4
+
+# Data
+data:
+  train_data_dir: "./data/train"
+  val_data_dir: "./data/val"
+  num_workers: 8
+  prefetch_factor: 2
+
+  # Audio loading
+  sample_rate: 48000
+  mono: true
+  normalize: true
+
+  # Augmentation
+  augmentation:
+    enabled: true
+    volume_change_db: [-6, 6]
+    speed_change: [0.95, 1.05]
+    pitch_shift_semitones: [-2, 2]
+
+# Distributed training
+distributed:
+  enabled: true
+  backend: "nccl"
+  find_unused_parameters: false
